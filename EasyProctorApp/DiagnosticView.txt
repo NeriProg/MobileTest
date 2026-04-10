@@ -1,0 +1,60 @@
+import SwiftUI
+import SafeAppSDK
+
+struct DiagnosticView: View {
+    let safeApp: SafeAppSDK
+    @EnvironmentObject private var eventController: SecurityEventController
+
+    var body: some View {
+        List {
+            Section("Sessão") {
+                Text("Ativa: \(safeApp.isSessionActive() ? "true" : "false")")
+                Text("Arquivo: \(safeApp.getSessionFilePath() ?? "indisponível")")
+            }
+
+            Section("Estado") {
+                Text("Blocked: \(eventController.blocked ? "true" : "false")")
+                Text("Eventos recebidos: \(eventController.events.count)")
+            }
+
+            Section("Último evento") {
+                if let event = eventController.lastEvent {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Type: \(event.type.rawValue)")
+                        Text("Feature: \(event.feature)")
+                        Text("Message: \(event.message)")
+                        Text("Source: \(event.source)")
+                        Text("Timestamp: \(event.timestampMs)")
+                    }
+                } else {
+                    Text("Nenhum evento")
+                }
+            }
+
+            Section("Histórico de eventos") {
+                if eventController.events.isEmpty {
+                    Text("Sem eventos")
+                } else {
+                    ForEach(eventController.events) { event in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(event.type.rawValue)
+                                .font(.headline)
+                            Text(event.message)
+                            Text(event.source)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+
+            Section("Ações") {
+                Button("Limpar eventos da UI") {
+                    eventController.clearEvents()
+                }
+            }
+        }
+        .navigationTitle("Diagnóstico")
+    }
+}
