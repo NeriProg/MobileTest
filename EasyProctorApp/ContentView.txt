@@ -60,6 +60,7 @@ struct ContentView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Started: \(started ? "true" : "false")")
                         Text("Blocked: \(eventController.blocked ? "true" : "false")")
+                        Text("Eventos: \(eventController.events.count)")
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -78,6 +79,11 @@ struct ContentView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
+
+                NavigationLink("Abrir diagnóstico") {
+                    DiagnosticView(safeApp: safeApp)
+                }
+                .buttonStyle(.bordered)
 
                 Spacer()
             }

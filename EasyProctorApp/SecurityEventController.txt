@@ -4,15 +4,23 @@ import SafeAppSDK
 final class SecurityEventController: ObservableObject, SafeAppSecurityCallback {
     @Published var lastEvent: SecurityEvent?
     @Published var blocked: Bool = false
+    @Published var events: [SecurityEvent] = []
 
     func onSecurityEvent(_ event: SecurityEvent) {
         lastEvent = event
+        events.insert(event, at: 0)
 
         switch event.type {
-        case .jailbreakDetected, .debuggerDetected, .screenCaptureDetected:
+        case .jailbreakDetected, .debuggerDetected, .screenCaptureDetected, .tamperDetected:
             blocked = true
         default:
             break
         }
+    }
+
+    func clearEvents() {
+        events.removeAll()
+        lastEvent = nil
+        blocked = false
     }
 }

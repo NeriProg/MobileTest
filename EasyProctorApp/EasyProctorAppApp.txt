@@ -8,7 +8,17 @@ struct EasyProctorAppApp: App {
     private let safeApp = SafeAppSDK(
         environment: .dev,
         proctoringId: "ios-test-session-001",
-        configuration: SafeAppConfiguration()
+        configuration: SafeAppConfiguration(
+            enableScreenCaptureAwareness: true,
+            enableJailbreakDetection: true,
+            enableDebuggerDetection: true,
+            enableClipboardMonitoring: true,
+            enableDeviceInfoMonitoring: true,
+            enableAppStateMonitoring: true,
+            enableLocationMonitoring: true,
+            enableNetworkMonitoring: true,
+            enableSecureHttpClient: true
+        )
     )
 
     var body: some Scene {
