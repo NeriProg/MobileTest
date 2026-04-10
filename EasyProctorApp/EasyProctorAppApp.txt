@@ -1,0 +1,24 @@
+import SwiftUI
+import SafeAppSDK
+
+@main
+struct EasyProctorAppApp: App {
+    @StateObject private var eventController = SecurityEventController()
+
+    private let safeApp = SafeAppSDK(
+        environment: .dev,
+        proctoringId: "ios-test-session-001",
+        configuration: SafeAppConfiguration()
+    )
+
+    var body: some Scene {
+        WindowGroup {
+            ContentView(safeApp: safeApp)
+                .environmentObject(eventController)
+                .onAppear {
+                    safeApp.setSecurityCallback(eventController)
+                    safeApp.onCreate()
+                }
+        }
+    }
+}

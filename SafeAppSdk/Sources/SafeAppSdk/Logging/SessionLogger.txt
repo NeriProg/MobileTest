@@ -1,0 +1,176 @@
+import Foundation
+
+public final class SessionLogger: @unchecked Sendable {
+    public static let shared = SessionLogger()
+
+    private let queue = DispatchQueue(label: "com.iaris.safeapp.sessionlogger")
+    private let sessionDirName = "ep_logs"
+
+    private var started = false
+    private var closed = false
+    private var sessionProctoringId: String?
+    private var sessionFileURL: URL?
+    private var sessionFileName: String?
+    private var store: [String: [String]] = [:]
+
+    private init() {}
+
+    public func startSession() {
+        queue.sync {
+            if started && !closed { return }
+
+            started = true
+            closed = false
+            sessionProctoringId = nil
+            sessionFileURL = nil
+            sessionFileName = nil
+            store.removeAll()
+
+            let dir = logsDirectory()
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+            let tsBase = Self.fileTimestamp()
+            let baseName = "ep_session_\(tsBase)"
+            var candidate = "\(baseName).json"
+            var index = 1
+
+            while FileManager.default.fileExists(atPath: dir.appendingPathComponent(candidate).path) {
+                candidate = "\(baseName)_\(index).json"
+                index += 1
+            }
+
+            sessionFileName = candidate
+            sessionFileURL = dir.appendingPathComponent(candidate)
+
+            flush(reason: "session_start")
+        }
+    }
+
+    public func setProctoringId(_ id: String?) {
+        queue.sync {
+            sessionProctoringId = id?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? id : nil
+        }
+    }
+
+    public func getProctoringId() -> String? {
+        queue.sync { sessionProctoringId }
+    }
+
+    public func isSessionActive() -> Bool {
+        queue.sync { started && !closed }
+    }
+
+    public func getSessionFilePath() -> String? {
+        queue.sync { sessionFileURL?.path }
+    }
+
+    public func flush(reason: String) {
+        queue.sync {
+            guard started else { return }
+            flushToDisk(reason: reason, includeClosedFlag: false)
+        }
+    }
+
+    public func closeSession(reason: String) {
+        queue.sync {
+            guard started, !closed else { return }
+            closed = true
+            flushToDisk(reason: reason, includeClosedFlag: true)
+            started = false
+        }
+    }
+
+    public func d(_ tag: String, _ message: String) {
+        append(tag: tag, levelMessage: message)
+    }
+
+    public func i(_ tag: String, _ message: String) {
+        append(tag: tag, levelMessage: message)
+    }
+
+    public func w(_ tag: String, _ message: String) {
+        append(tag: tag, levelMessage: message)
+    }
+
+    public func e(_ tag: String, _ message: String) {
+        append(tag: tag, levelMessage: message)
+    }
+
+    public func dt(_ tag: String, _ message: String) { d(tag, "[\(Self.now())] \(message)") }
+    public func it(_ tag: String, _ message: String) { i(tag, "[\(Self.now())] \(message)") }
+    public func wt(_ tag: String, _ message: String) { w(tag, "[\(Self.now())] \(message)") }
+    public func et(_ tag: String, _ message: String) { e(tag, "[\(Self.now())] \(message)") }
+
+    private func append(tag: String, levelMessage: String) {
+        queue.sync {
+            guard started, !closed else { return }
+
+            let line: String
+            if levelMessage.hasPrefix("[") {
+                line = levelMessage
+            } else {
+                line = "[\(Self.now())] \(levelMessage)"
+            }
+
+            var arr = store[tag, default: []]
+            arr.append(line)
+            store[tag] = arr
+        }
+    }
+
+    private func flushToDisk(reason: String, includeClosedFlag: Bool) {
+        do {
+            if sessionFileURL == nil {
+                startSession()
+            }
+
+            guard let fileURL = sessionFileURL else { return }
+
+            var root: [String: Any] = [:]
+
+            if let proctoringId = sessionProctoringId {
+                root["proctoringId"] = proctoringId
+            }
+
+            var meta: [String: Any] = [
+                "saved_at": Self.now(),
+                "reason": reason,
+                "session_file": sessionFileName ?? ""
+            ]
+
+            if includeClosedFlag {
+                meta["closed"] = true
+            }
+
+            root["_meta"] = meta
+
+            for (tag, lines) in store {
+                root[tag] = lines
+            }
+
+            let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
+            try data.write(to: fileURL, options: .atomic)
+        } catch {
+            print("EPLOG flush error: \(error)")
+        }
+    }
+
+    private func logsDirectory() -> URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        return base.appendingPathComponent(sessionDirName, isDirectory: true)
+    }
+
+    private static func now() -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+        return formatter.string(from: Date())
+    }
+
+    private static func fileTimestamp() -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        return formatter.string(from: Date())
+    }
+}

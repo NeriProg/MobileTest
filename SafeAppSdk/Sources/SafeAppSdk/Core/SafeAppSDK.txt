@@ -1,0 +1,232 @@
+import Foundation
+import UIKit
+
+public final class SafeAppSDK: NSObject, @unchecked Sendable {
+    private let environment: ProctorEnvironment
+    private let proctoringId: String
+    private let configuration: SafeAppConfiguration
+    private let apiClient: ProctorAPIClient
+
+    private var armed = false
+    private var appObservers: [NSObjectProtocol] = []
+
+    private var debuggerMonitor: DebuggerMonitor?
+    private var jailbreakDetector: JailbreakDetector?
+    private var clipboardMonitor: ClipboardMonitor?
+    private var networkMonitor: NetworkMonitor?
+    private var locationMonitor: LocationMonitor?
+
+    public init(
+        environment: ProctorEnvironment,
+        proctoringId: String,
+        configuration: SafeAppConfiguration = .init()
+    ) {
+        self.environment = environment
+        self.proctoringId = proctoringId
+        self.configuration = configuration
+        self.apiClient = ProctorAPIClient(
+            environment: environment,
+            timeoutSeconds: configuration.networkConfig.requestTimeoutSeconds
+        )
+        super.init()
+    }
+
+    public func setSecurityCallback(_ callback: SafeAppSecurityCallback?) {
+        SafeAppSecurityBus.shared.register(callback)
+    }
+
+    public func onCreate() {
+        SessionLogger.shared.i("EP_SDK", "onCreate prepared=true")
+    }
+
+    public func startMonitoring() {
+        guard !armed else { return }
+        armed = true
+
+        SessionLogger.shared.startSession()
+        SessionLogger.shared.setProctoringId(proctoringId)
+        SessionLogger.shared.it("EP_SDK", "session_started proctoringId=\(proctoringId) env=\(environment.rawValue.uppercased())")
+        SessionLogger.shared.it("EP_SDK", "Monitoring STARTED file=\(SessionLogger.shared.getSessionFilePath() ?? "na")")
+
+        if configuration.enableAppStateMonitoring {
+            registerApplicationObservers()
+        }
+
+        if configuration.enableDeviceInfoMonitoring {
+            logDeviceInfo()
+        }
+
+        if configuration.enableScreenCaptureAwareness {
+            logScreenCaptureState()
+        }
+
+        if configuration.enableDebuggerDetection {
+            let monitor = DebuggerMonitor(config: configuration.debuggerConfig)
+            monitor.start()
+            debuggerMonitor = monitor
+        }
+
+        if configuration.enableJailbreakDetection {
+            let detector = JailbreakDetector(config: configuration.jailbreakConfig)
+            detector.checkNow()
+            jailbreakDetector = detector
+        }
+
+        if configuration.enableClipboardMonitoring {
+            clipboardMonitor = ClipboardMonitor(config: configuration.clipboardConfig)
+        }
+
+        if configuration.enableNetworkMonitoring {
+            let monitor = NetworkMonitor(config: configuration.networkConfig)
+            monitor.start()
+            networkMonitor = monitor
+        }
+
+        if configuration.enableLocationMonitoring {
+            let monitor = LocationMonitor(config: configuration.locationConfig)
+            monitor.start()
+            locationMonitor = monitor
+        }
+    }
+
+    public func stopMonitoring(reason: String = "manual_stop") {
+        guard armed else { return }
+        armed = false
+
+        unregisterApplicationObservers()
+
+        debuggerMonitor?.stop()
+        debuggerMonitor = nil
+
+        networkMonitor?.stop()
+        networkMonitor = nil
+
+        locationMonitor?.stop()
+        locationMonitor = nil
+
+        clipboardMonitor = nil
+        jailbreakDetector = nil
+
+        SessionLogger.shared.it("EP_SDK", "Monitoring STOPPED reason=\(reason)")
+        SessionLogger.shared.flush(reason: "before_upload")
+
+        if
+            let path = SessionLogger.shared.getSessionFilePath(),
+            let contents = try? String(contentsOfFile: path, encoding: .utf8)
+        {
+            Task {
+                await apiClient.sendLogs(logsJSON: contents)
+            }
+        }
+
+        SessionLogger.shared.closeSession(reason: reason)
+    }
+
+    public func logClipboardCopy(_ text: String?, source: String = "app_copy") {
+        clipboardMonitor?.logCopy(text: text, source: source)
+    }
+
+    public func logClipboardPaste(_ text: String?, source: String = "app_paste") {
+        clipboardMonitor?.logPaste(text: text, source: source)
+    }
+
+    private func registerApplicationObservers() {
+        let center = NotificationCenter.default
+
+        let didBecomeActive = center.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            SessionLogger.shared.i("APP_STATE", "didBecomeActive")
+        }
+
+        let willResignActive = center.addObserver(
+            forName: UIApplication.willResignActiveNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            SessionLogger.shared.w("APP_STATE", "willResignActive")
+            SafeAppSecurityBus.shared.emit(
+                SecurityEvent(
+                    type: .windowFocusLost,
+                    feature: "app_state",
+                    message: "App perdeu foco ativo",
+                    source: "UIApplication.willResignActiveNotification"
+                )
+            )
+        }
+
+        let didEnterBackground = center.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            SessionLogger.shared.w("APP_STATE", "didEnterBackground")
+            SafeAppSecurityBus.shared.emit(
+                SecurityEvent(
+                    type: .appSentToBackground,
+                    feature: "app_state",
+                    message: "Aplicativo foi para background",
+                    source: "UIApplication.didEnterBackgroundNotification"
+                )
+            )
+        }
+
+        let willEnterForeground = center.addObserver(
+            forName: UIApplication.willEnterForegroundNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            SessionLogger.shared.i("APP_STATE", "willEnterForeground")
+        }
+
+        let capturedDidChange = center.addObserver(
+            forName: UIScreen.capturedDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            let isCaptured = UIScreen.main.isCaptured
+            SessionLogger.shared.w("EP_CAPTURE", "capturedDidChange isCaptured=\(isCaptured)")
+            if isCaptured {
+                SafeAppSecurityBus.shared.emit(
+                    SecurityEvent(
+                        type: .screenCaptureDetected,
+                        feature: "screen_capture",
+                        message: "Captura de tela/espelhamento detectado",
+                        source: "UIScreen.capturedDidChangeNotification",
+                        details: ["isCaptured": "true"]
+                    )
+                )
+            }
+        }
+
+        appObservers = [
+            didBecomeActive,
+            willResignActive,
+            didEnterBackground,
+            willEnterForeground,
+            capturedDidChange
+        ]
+    }
+
+    private func unregisterApplicationObservers() {
+        let center = NotificationCenter.default
+        appObservers.forEach(center.removeObserver)
+        appObservers.removeAll()
+    }
+
+    private func logDeviceInfo() {
+        let device = UIDevice.current
+        SessionLogger.shared.i("EP_DEVICE", "name=\(device.name)")
+        SessionLogger.shared.i("EP_DEVICE", "model=\(device.model)")
+        SessionLogger.shared.i("EP_DEVICE", "systemName=\(device.systemName)")
+        SessionLogger.shared.i("EP_DEVICE", "systemVersion=\(device.systemVersion)")
+        SessionLogger.shared.i("EP_DEVICE", "identifierForVendor=\(device.identifierForVendor?.uuidString ?? "nil")")
+    }
+
+    private func logScreenCaptureState() {
+        let isCaptured = UIScreen.main.isCaptured
+        SessionLogger.shared.i("EP_CAPTURE", "initial isCaptured=\(isCaptured)")
+    }
+}

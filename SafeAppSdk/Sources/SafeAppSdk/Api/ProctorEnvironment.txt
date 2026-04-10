@@ -1,0 +1,18 @@
+import Foundation
+
+public enum ProctorEnvironment: String, Sendable, CaseIterable {
+    case dev
+    case hml
+    case prod
+
+    public var baseURL: URL {
+        switch self {
+        case .dev:
+            return URL(string: "https://proctoring-api-dev.easyproctor.tech/")!
+        case .hml:
+            return URL(string: "https://proctoring-api-hml.easyproctor.tech/")!
+        case .prod:
+            return URL(string: "https://proctoring-api.easyproctor.tech/")!
+        }
+    }
+}

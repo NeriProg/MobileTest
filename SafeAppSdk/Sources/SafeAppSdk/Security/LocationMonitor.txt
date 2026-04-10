@@ -1,0 +1,147 @@
+import Foundation
+import CoreLocation
+
+public final class LocationMonitor: NSObject, @unchecked Sendable {
+    private let config: LocationConfig
+    private let manager = CLLocationManager()
+
+    private var lastLocation: CLLocation?
+    private var lastUpdateTime: Date?
+
+    public init(config: LocationConfig) {
+        self.config = config
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyBest
+    }
+
+    public func start() {
+        SessionLogger.shared.i(config.tag, "LocationMonitor started")
+
+        let status = manager.authorizationStatus
+        SessionLogger.shared.i(config.tag, "authorizationStatus=\(status.rawValue)")
+
+        switch status {
+        case .notDetermined:
+            manager.requestWhenInUseAuthorization()
+        case .restricted, .denied:
+            emitPermissionDenied(status: status)
+        case .authorizedAlways, .authorizedWhenInUse:
+            manager.startUpdatingLocation()
+        @unknown default:
+            SessionLogger.shared.w(config.tag, "unknown authorization status")
+        }
+    }
+
+    public func stop() {
+        manager.stopUpdatingLocation()
+        SessionLogger.shared.i(config.tag, "LocationMonitor stopped")
+    }
+
+    private func emitPermissionDenied(status: CLAuthorizationStatus) {
+        SafeAppSecurityBus.shared.emit(
+            SecurityEvent(
+                type: .locationPermissionDenied,
+                feature: "location_monitor",
+                message: "Permissão de localização negada ou restrita",
+                source: "CLLocationManager",
+                details: ["status": "\(status.rawValue)"]
+            )
+        )
+    }
+
+    private func process(location: CLLocation) {
+        let accuracy = location.horizontalAccuracy
+        let age = Date().timeIntervalSince(location.timestamp)
+
+        SessionLogger.shared.i(
+            config.tag,
+            "lat=\(location.coordinate.latitude) lon=\(location.coordinate.longitude) acc=\(accuracy) age_s=\(age)"
+        )
+
+        if accuracy > config.requiredMaxAccuracyMeters {
+            SafeAppSecurityBus.shared.emit(
+                SecurityEvent(
+                    type: .locationAnomaly,
+                    feature: "location_monitor",
+                    message: "Precisão da localização acima do limite",
+                    source: "LocationMonitor",
+                    details: [
+                        "accuracy": "\(accuracy)",
+                        "maxAllowed": "\(config.requiredMaxAccuracyMeters)"
+                    ]
+                )
+            )
+        }
+
+        if age > config.requiredMaxAgeSeconds {
+            SafeAppSecurityBus.shared.emit(
+                SecurityEvent(
+                    type: .locationAnomaly,
+                    feature: "location_monitor",
+                    message: "Localização muito antiga",
+                    source: "LocationMonitor",
+                    details: [
+                        "ageSeconds": "\(age)",
+                        "maxAllowed": "\(config.requiredMaxAgeSeconds)"
+                    ]
+                )
+            )
+        }
+
+        if let lastLocation, let lastUpdateTime {
+            let distance = location.distance(from: lastLocation)
+            let deltaTime = Date().timeIntervalSince(lastUpdateTime)
+
+            if deltaTime > 0 {
+                let speed = distance / deltaTime
+                SessionLogger.shared.i(config.tag, "distance_m=\(distance) delta_s=\(deltaTime) speed_mps=\(speed)")
+
+                if speed > config.teleportSpeedMps {
+                    SafeAppSecurityBus.shared.emit(
+                        SecurityEvent(
+                            type: .locationAnomaly,
+                            feature: "location_monitor",
+                            message: "Salto de localização suspeito detectado",
+                            source: "LocationMonitor",
+                            details: [
+                                "speedMps": "\(speed)",
+                                "thresholdMps": "\(config.teleportSpeedMps)"
+                            ]
+                        )
+                    )
+                }
+            }
+        }
+
+        self.lastLocation = location
+        self.lastUpdateTime = Date()
+    }
+}
+
+extension LocationMonitor: CLLocationManagerDelegate {
+    public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let status = manager.authorizationStatus
+        SessionLogger.shared.i(config.tag, "authorization_changed=\(status.rawValue)")
+
+        switch status {
+        case .authorizedAlways, .authorizedWhenInUse:
+            manager.startUpdatingLocation()
+        case .restricted, .denied:
+            emitPermissionDenied(status: status)
+        case .notDetermined:
+            break
+        @unknown default:
+            SessionLogger.shared.w(config.tag, "unknown authorization status after change")
+        }
+    }
+
+    public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let location = locations.last else { return }
+        process(location: location)
+    }
+
+    public func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        SessionLogger.shared.e(config.tag, "location_error=\(error.localizedDescription)")
+    }
+}

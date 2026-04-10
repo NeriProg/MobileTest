@@ -1,0 +1,131 @@
+import Foundation
+
+public struct SafeAppConfiguration: Sendable {
+    public var enableScreenCaptureAwareness: Bool
+    public var enableJailbreakDetection: Bool
+    public var enableDebuggerDetection: Bool
+    public var enableClipboardMonitoring: Bool
+    public var enableDeviceInfoMonitoring: Bool
+    public var enableAppStateMonitoring: Bool
+    public var enableLocationMonitoring: Bool
+    public var enableNetworkMonitoring: Bool
+    public var enableSecureHttpClient: Bool
+
+    public var locationConfig: LocationConfig
+    public var networkConfig: NetworkConfig
+    public var debuggerConfig: DebuggerConfig
+    public var jailbreakConfig: JailbreakConfig
+    public var clipboardConfig: ClipboardConfig
+
+    public init(
+        enableScreenCaptureAwareness: Bool = true,
+        enableJailbreakDetection: Bool = true,
+        enableDebuggerDetection: Bool = true,
+        enableClipboardMonitoring: Bool = true,
+        enableDeviceInfoMonitoring: Bool = true,
+        enableAppStateMonitoring: Bool = true,
+        enableLocationMonitoring: Bool = true,
+        enableNetworkMonitoring: Bool = true,
+        enableSecureHttpClient: Bool = true,
+        locationConfig: LocationConfig = .init(),
+        networkConfig: NetworkConfig = .init(),
+        debuggerConfig: DebuggerConfig = .init(),
+        jailbreakConfig: JailbreakConfig = .init(),
+        clipboardConfig: ClipboardConfig = .init()
+    ) {
+        self.enableScreenCaptureAwareness = enableScreenCaptureAwareness
+        self.enableJailbreakDetection = enableJailbreakDetection
+        self.enableDebuggerDetection = enableDebuggerDetection
+        self.enableClipboardMonitoring = enableClipboardMonitoring
+        self.enableDeviceInfoMonitoring = enableDeviceInfoMonitoring
+        self.enableAppStateMonitoring = enableAppStateMonitoring
+        self.enableLocationMonitoring = enableLocationMonitoring
+        self.enableNetworkMonitoring = enableNetworkMonitoring
+        self.enableSecureHttpClient = enableSecureHttpClient
+        self.locationConfig = locationConfig
+        self.networkConfig = networkConfig
+        self.debuggerConfig = debuggerConfig
+        self.jailbreakConfig = jailbreakConfig
+        self.clipboardConfig = clipboardConfig
+    }
+}
+
+public struct LocationConfig: Sendable {
+    public var tag: String
+    public var requiredMaxAccuracyMeters: Double
+    public var requiredMaxAgeSeconds: Double
+    public var teleportSpeedMps: Double
+    public var pollIntervalSeconds: Double
+
+    public init(
+        tag: String = "EP_GEO",
+        requiredMaxAccuracyMeters: Double = 50,
+        requiredMaxAgeSeconds: Double = 10,
+        teleportSpeedMps: Double = 200,
+        pollIntervalSeconds: Double = 300
+    ) {
+        self.tag = tag
+        self.requiredMaxAccuracyMeters = requiredMaxAccuracyMeters
+        self.requiredMaxAgeSeconds = requiredMaxAgeSeconds
+        self.teleportSpeedMps = teleportSpeedMps
+        self.pollIntervalSeconds = pollIntervalSeconds
+    }
+}
+
+public struct NetworkConfig: Sendable {
+    public var tag: String
+    public var pollIntervalSeconds: Double
+    public var requestTimeoutSeconds: Double
+
+    public init(
+        tag: String = "EP_NET",
+        pollIntervalSeconds: Double = 300,
+        requestTimeoutSeconds: Double = 30
+    ) {
+        self.tag = tag
+        self.pollIntervalSeconds = pollIntervalSeconds
+        self.requestTimeoutSeconds = requestTimeoutSeconds
+    }
+}
+
+public struct DebuggerConfig: Sendable {
+    public var tag: String
+    public var intervalSeconds: Double
+
+    public init(
+        tag: String = "EP_ANTIDEBUG",
+        intervalSeconds: Double = 300
+    ) {
+        self.tag = tag
+        self.intervalSeconds = intervalSeconds
+    }
+}
+
+public struct JailbreakConfig: Sendable {
+    public var tag: String
+    public var scoreThreshold: Int
+
+    public init(
+        tag: String = "EP_JAILBREAK",
+        scoreThreshold: Int = 2
+    ) {
+        self.tag = tag
+        self.scoreThreshold = scoreThreshold
+    }
+}
+
+public struct ClipboardConfig: Sendable {
+    public var tag: String
+    public var logFullText: Bool
+    public var maxCharsToLog: Int
+
+    public init(
+        tag: String = "CLIPBOARD",
+        logFullText: Bool = true,
+        maxCharsToLog: Int = 200
+    ) {
+        self.tag = tag
+        self.logFullText = logFullText
+        self.maxCharsToLog = maxCharsToLog
+    }
+}

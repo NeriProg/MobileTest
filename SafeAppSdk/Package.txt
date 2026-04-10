@@ -1,0 +1,24 @@
+// swift-tools-version: 6.1
+import PackageDescription
+
+let package = Package(
+    name: "SafeAppSDK",
+    platforms: [
+        .iOS(.v16)
+    ],
+    products: [
+        .library(
+            name: "SafeAppSDK",
+            targets: ["SafeAppSDK"]
+        )
+    ],
+    targets: [
+        .target(
+            name: "SafeAppSDK"
+        ),
+        .testTarget(
+            name: "SafeAppSDKTests",
+            dependencies: ["SafeAppSDK"]
+        )
+    ]
+)

@@ -1,0 +1,50 @@
+import Foundation
+
+public enum SecurityEventType: String, Codable, Sendable {
+    case vpnDetected = "VPN_DETECTED"
+    case proxyDetected = "PROXY_DETECTED"
+    case jailbreakDetected = "JAILBREAK_DETECTED"
+    case debuggerDetected = "DEBUGGER_DETECTED"
+    case emulatorDetected = "EMULATOR_DETECTED"
+    case developerModeEnabled = "DEV_MODE_ENABLED"
+    case tamperDetected = "TAMPER_DETECTED"
+    case screenCaptureDetected = "SCREEN_CAPTURE_DETECTED"
+    case clipboardCopy = "CLIPBOARD_COPY"
+    case clipboardPaste = "CLIPBOARD_PASTE"
+    case appSentToBackground = "APP_SENT_TO_BACKGROUND"
+    case userLeftApp = "USER_LEFT_APP"
+    case windowFocusLost = "WINDOW_FOCUS_LOST"
+    case locationAnomaly = "LOCATION_ANOMALY"
+    case locationPermissionDenied = "LOCATION_PERMISSION_DENIED"
+}
+
+public struct SecurityEvent: Codable, Sendable, Identifiable {
+    public let id: UUID
+    public let type: SecurityEventType
+    public let feature: String
+    public let message: String
+    public let source: String
+    public let timestampMs: Int64
+    public let details: [String: String]
+
+    public init(
+        type: SecurityEventType,
+        feature: String,
+        message: String,
+        source: String,
+        timestampMs: Int64 = Int64(Date().timeIntervalSince1970 * 1000),
+        details: [String: String] = [:]
+    ) {
+        self.id = UUID()
+        self.type = type
+        self.feature = feature
+        self.message = message
+        self.source = source
+        self.timestampMs = timestampMs
+        self.details = details
+    }
+}
+
+public protocol SafeAppSecurityCallback: AnyObject {
+    func onSecurityEvent(_ event: SecurityEvent)
+}

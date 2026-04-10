@@ -1,0 +1,56 @@
+import Foundation
+
+public final class ClipboardMonitor: @unchecked Sendable {
+    private let config: ClipboardConfig
+
+    public init(config: ClipboardConfig) {
+        self.config = config
+    }
+
+    public func logCopy(text: String?, source: String = "app_copy") {
+        let sanitized = sanitize(text)
+        SessionLogger.shared.i(config.tag, "COPY detected source=\(source)")
+        SessionLogger.shared.i(config.tag, "COPIED_CONTENT=\(sanitized)")
+
+        SafeAppSecurityBus.shared.emit(
+            SecurityEvent(
+                type: .clipboardCopy,
+                feature: "clipboard",
+                message: "Cópia detectada dentro do app",
+                source: source,
+                details: ["content": sanitized]
+            )
+        )
+    }
+
+    public func logPaste(text: String?, source: String = "app_paste") {
+        let sanitized = sanitize(text)
+        SessionLogger.shared.i(config.tag, "PASTE detected source=\(source)")
+        SessionLogger.shared.i(config.tag, "PASTED_CONTENT=\(sanitized)")
+
+        SafeAppSecurityBus.shared.emit(
+            SecurityEvent(
+                type: .clipboardPaste,
+                feature: "clipboard",
+                message: "Colagem detectada dentro do app",
+                source: source,
+                details: ["content": sanitized]
+            )
+        )
+    }
+
+    private func sanitize(_ text: String?) -> String {
+        guard let text else { return "" }
+
+        if !config.logFullText {
+            return "len=\(text.count)"
+        }
+
+        if text.count <= config.maxCharsToLog {
+            return text
+        }
+
+        let limited = String(text.prefix(config.maxCharsToLog))
+        return limited + "...(truncated)"
+    }
+}

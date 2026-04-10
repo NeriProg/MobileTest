@@ -1,0 +1,88 @@
+import SwiftUI
+import SafeAppSDK
+import UIKit
+
+struct ContentView: View {
+    let safeApp: SafeAppSDK
+    @EnvironmentObject private var eventController: SecurityEventController
+
+    @State private var started = false
+    @State private var statusText = "SDK ainda não iniciado"
+    @State private var inputText = ""
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 16) {
+                Text("EasyProctor iOS")
+                    .font(.largeTitle)
+                    .bold()
+
+                Text(statusText)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                HStack(spacing: 12) {
+                    Button("Start Monitoring") {
+                        safeApp.startMonitoring()
+                        started = true
+                        statusText = "Monitoramento iniciado"
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    Button("Stop Monitoring") {
+                        safeApp.stopMonitoring()
+                        started = false
+                        statusText = "Monitoramento parado"
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                TextField("Digite algo para testar clipboard", text: $inputText)
+                    .textFieldStyle(.roundedBorder)
+
+                HStack(spacing: 12) {
+                    Button("Copiar texto") {
+                        UIPasteboard.general.string = inputText
+                        safeApp.logClipboardCopy(inputText, source: "button_copy")
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button("Colar texto") {
+                        let pasted = UIPasteboard.general.string ?? ""
+                        inputText = pasted
+                        safeApp.logClipboardPaste(pasted, source: "button_paste")
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                GroupBox("Estado atual") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Started: \(started ? "true" : "false")")
+                        Text("Blocked: \(eventController.blocked ? "true" : "false")")
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                GroupBox("Último evento de segurança") {
+                    if let event = eventController.lastEvent {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Type: \(event.type.rawValue)")
+                            Text("Feature: \(event.feature)")
+                            Text("Message: \(event.message)")
+                            Text("Source: \(event.source)")
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        Text("Nenhum evento ainda")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+
+                Spacer()
+            }
+            .padding()
+            .navigationTitle("Home")
+        }
+    }
+}

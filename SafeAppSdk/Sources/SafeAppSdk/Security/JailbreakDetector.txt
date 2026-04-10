@@ -1,0 +1,86 @@
+import Foundation
+import UIKit
+
+public final class JailbreakDetector: @unchecked Sendable {
+    private let config: JailbreakConfig
+
+    public init(config: JailbreakConfig) {
+        self.config = config
+    }
+
+    public func checkNow() {
+        let findings = collectFindings()
+        let score = findings.count
+
+        SessionLogger.shared.i(config.tag, "jailbreak_score=\(score)")
+        if !findings.isEmpty {
+            SessionLogger.shared.w(config.tag, "findings=\(findings.joined(separator: ","))")
+        }
+
+        if score >= config.scoreThreshold {
+            SafeAppSecurityBus.shared.emit(
+                SecurityEvent(
+                    type: .jailbreakDetected,
+                    feature: "jailbreak_detector",
+                    message: "Possível jailbreak detectado",
+                    source: "JailbreakDetector",
+                    details: [
+                        "score": "\(score)",
+                        "threshold": "\(config.scoreThreshold)",
+                        "findings": findings.joined(separator: ",")
+                    ]
+                )
+            )
+        }
+    }
+
+    private func collectFindings() -> [String] {
+        #if targetEnvironment(simulator)
+        return []
+        #else
+        var findings: [String] = []
+
+        let suspiciousPaths = [
+            "/Applications/Cydia.app",
+            "/Library/MobileSubstrate/MobileSubstrate.dylib",
+            "/bin/bash",
+            "/usr/sbin/sshd",
+            "/etc/apt",
+            "/private/var/lib/apt/",
+            "/private/var/stash"
+        ]
+
+        for path in suspiciousPaths where FileManager.default.fileExists(atPath: path) {
+            findings.append("path:\(path)")
+        }
+
+        if canOpenSuspiciousURLScheme() {
+            findings.append("urlscheme:cydia")
+        }
+
+        if canWriteOutsideSandbox() {
+            findings.append("write_outside_sandbox")
+        }
+
+        return findings
+        #endif
+    }
+
+    private func canWriteOutsideSandbox() -> Bool {
+        let testPath = "/private/" + UUID().uuidString
+        do {
+            try "test".write(toFile: testPath, atomically: true, encoding: .utf8)
+            try? FileManager.default.removeItem(atPath: testPath)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    private func canOpenSuspiciousURLScheme() -> Bool {
+        guard let url = URL(string: "cydia://package/com.example.package") else {
+            return false
+        }
+        return UIApplication.shared.canOpenURL(url)
+    }
+}

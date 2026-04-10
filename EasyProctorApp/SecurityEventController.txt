@@ -1,0 +1,18 @@
+import Foundation
+import SafeAppSDK
+
+final class SecurityEventController: ObservableObject, SafeAppSecurityCallback {
+    @Published var lastEvent: SecurityEvent?
+    @Published var blocked: Bool = false
+
+    func onSecurityEvent(_ event: SecurityEvent) {
+        lastEvent = event
+
+        switch event.type {
+        case .jailbreakDetected, .debuggerDetected, .screenCaptureDetected:
+            blocked = true
+        default:
+            break
+        }
+    }
+}

@@ -1,0 +1,38 @@
+import Foundation
+
+public final class SafeAppSecurityBus: @unchecked Sendable {
+    public static let shared = SafeAppSecurityBus()
+
+    private let queue = DispatchQueue(label: "com.iaris.safeapp.securitybus", attributes: .concurrent)
+    private weak var callback: SafeAppSecurityCallback?
+
+    private init() {}
+
+    public func register(_ callback: SafeAppSecurityCallback?) {
+        queue.async(flags: .barrier) {
+            self.callback = callback
+        }
+        SessionLogger.shared.i("EP_CALLBACK", "registered=\(callback != nil)")
+    }
+
+    public func clear() {
+        queue.async(flags: .barrier) {
+            self.callback = nil
+        }
+        SessionLogger.shared.i("EP_CALLBACK", "cleared=true")
+    }
+
+    public func emit(_ event: SecurityEvent) {
+        SessionLogger.shared.w(
+            "EP_CALLBACK",
+            "emit type=\(event.type.rawValue) source=\(event.source) feature=\(event.feature) message=\(event.message)"
+        )
+
+        queue.async {
+            guard let callback = self.callback else { return }
+            DispatchQueue.main.async {
+                callback.onSecurityEvent(event)
+            }
+        }
+    }
+}

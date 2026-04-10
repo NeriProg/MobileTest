@@ -1,0 +1,65 @@
+import Foundation
+
+public final class DebuggerMonitor: @unchecked Sendable {
+    private let config: DebuggerConfig
+    private var timer: DispatchSourceTimer?
+
+    public init(config: DebuggerConfig) {
+        self.config = config
+    }
+
+    public func start() {
+        stop()
+
+        SessionLogger.shared.i(config.tag, "DebuggerMonitor started interval=\(config.intervalSeconds)s")
+
+        checkNow()
+
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "com.iaris.safeapp.debugger"))
+        timer.schedule(deadline: .now() + config.intervalSeconds, repeating: config.intervalSeconds)
+        timer.setEventHandler { [weak self] in
+            self?.checkNow()
+        }
+        timer.resume()
+        self.timer = timer
+    }
+
+    public func stop() {
+        timer?.cancel()
+        timer = nil
+        SessionLogger.shared.i(config.tag, "DebuggerMonitor stopped")
+    }
+
+    public func checkNow() {
+        let attached = isDebuggerAttached()
+        SessionLogger.shared.i(config.tag, "debugger_attached=\(attached)")
+
+        if attached {
+            SafeAppSecurityBus.shared.emit(
+                SecurityEvent(
+                    type: .debuggerDetected,
+                    feature: "debugger_monitor",
+                    message: "Debugger detectado",
+                    source: "DebuggerMonitor",
+                    details: ["attached": "true"]
+                )
+            )
+        }
+    }
+
+    private func isDebuggerAttached() -> Bool {
+        var info = kinfo_proc()
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
+        var size = MemoryLayout<kinfo_proc>.stride
+
+        let result = mib.withUnsafeMutableBufferPointer { mibPtr in
+            sysctl(mibPtr.baseAddress, 4, &info, &size, nil, 0)
+        }
+
+        if result != 0 {
+            return false
+        }
+
+        return (info.kp_proc.p_flag & P_TRACED) != 0
+    }
+}

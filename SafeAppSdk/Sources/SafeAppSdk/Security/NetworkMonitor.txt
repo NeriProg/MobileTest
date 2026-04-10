@@ -1,0 +1,53 @@
+import Foundation
+import Network
+
+public final class NetworkMonitor: @unchecked Sendable {
+    private let config: NetworkConfig
+    private let monitor = NWPathMonitor()
+    private let queue = DispatchQueue(label: "com.iaris.safeapp.networkmonitor")
+
+    public init(config: NetworkConfig) {
+        self.config = config
+    }
+
+    public func start() {
+        SessionLogger.shared.i(config.tag, "NetworkMonitor started")
+
+        monitor.pathUpdateHandler = { path in
+            let status = path.status == .satisfied ? "satisfied" : "unsatisfied"
+            let usesWiFi = path.usesInterfaceType(.wifi)
+            let usesCellular = path.usesInterfaceType(.cellular)
+            let usesWired = path.usesInterfaceType(.wiredEthernet)
+            let isExpensive = path.isExpensive
+
+            SessionLogger.shared.i(
+                self.config.tag,
+                "status=\(status) wifi=\(usesWiFi) cellular=\(usesCellular) wired=\(usesWired) expensive=\(isExpensive)"
+            )
+
+            if path.usesInterfaceType(.other) {
+                SessionLogger.shared.w(self.config.tag, "possible_vpn_or_other_interface=true")
+
+                SafeAppSecurityBus.shared.emit(
+                    SecurityEvent(
+                        type: .vpnDetected,
+                        feature: "network_monitor",
+                        message: "Interface de rede suspeita/alternativa detectada",
+                        source: "NWPathMonitor",
+                        details: [
+                            "status": status,
+                            "usesOtherInterface": "true"
+                        ]
+                    )
+                )
+            }
+        }
+
+        monitor.start(queue: queue)
+    }
+
+    public func stop() {
+        monitor.cancel()
+        SessionLogger.shared.i(config.tag, "NetworkMonitor stopped")
+    }
+}
