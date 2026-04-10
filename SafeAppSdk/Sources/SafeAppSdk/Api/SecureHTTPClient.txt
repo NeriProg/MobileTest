@@ -1,0 +1,32 @@
+import Foundation
+
+public final class SecureHTTPClient: @unchecked Sendable {
+    private let session: URLSession
+
+    public init(timeoutSeconds: TimeInterval = 30) {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = timeoutSeconds
+        config.timeoutIntervalForResource = timeoutSeconds
+        config.waitsForConnectivity = true
+        self.session = URLSession(configuration: config)
+    }
+
+    public func postJSON(to url: URL, body: Data, headers: [String: String] = [:]) async throws -> (Data, HTTPURLResponse) {
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = body
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        for (key, value) in headers {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+
+        return (data, http)
+    }
+}

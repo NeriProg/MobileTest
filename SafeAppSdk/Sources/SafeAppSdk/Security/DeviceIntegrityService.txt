@@ -1,0 +1,45 @@
+import Foundation
+import DeviceCheck
+
+public final class DeviceIntegrityService: @unchecked Sendable {
+    public init() {}
+
+    public func checkAvailability() {
+        let supported = DCDevice.current.isSupported
+        SessionLogger.shared.i("EP_INTEGRITY", "devicecheck_supported=\(supported)")
+
+        if !supported {
+            SafeAppSecurityBus.shared.emit(
+                SecurityEvent(
+                    type: .tamperDetected,
+                    feature: "device_integrity",
+                    message: "DeviceCheck não suportado neste dispositivo",
+                    source: "DeviceIntegrityService",
+                    details: ["deviceCheckSupported": "false"]
+                )
+            )
+        }
+    }
+
+    public func generateDeviceToken() {
+        guard DCDevice.current.isSupported else {
+            SessionLogger.shared.w("EP_INTEGRITY", "generateDeviceToken skipped unsupported_device")
+            return
+        }
+
+        DCDevice.current.generateToken { data, error in
+            if let error {
+                SessionLogger.shared.e("EP_INTEGRITY", "token_error=\(error.localizedDescription)")
+                return
+            }
+
+            guard let data else {
+                SessionLogger.shared.w("EP_INTEGRITY", "token_error=nil_data")
+                return
+            }
+
+            let token = data.base64EncodedString()
+            SessionLogger.shared.i("EP_INTEGRITY", "device_token_generated len=\(token.count)")
+        }
+    }
+}

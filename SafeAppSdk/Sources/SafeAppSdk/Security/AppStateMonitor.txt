@@ -1,0 +1,100 @@
+import Foundation
+import UIKit
+
+public final class AppStateMonitor: @unchecked Sendable {
+    private var observers: [NSObjectProtocol] = []
+
+    public init() {}
+
+    public func start() {
+        stop()
+
+        let center = NotificationCenter.default
+
+        let didBecomeActive = center.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            SessionLogger.shared.i("APP_STATE", "didBecomeActive")
+        }
+
+        let willResignActive = center.addObserver(
+            forName: UIApplication.willResignActiveNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            SessionLogger.shared.w("APP_STATE", "willResignActive")
+            SafeAppSecurityBus.shared.emit(
+                SecurityEvent(
+                    type: .windowFocusLost,
+                    feature: "app_state",
+                    message: "App perdeu foco ativo",
+                    source: "UIApplication.willResignActiveNotification"
+                )
+            )
+        }
+
+        let didEnterBackground = center.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            SessionLogger.shared.w("APP_STATE", "didEnterBackground")
+            SafeAppSecurityBus.shared.emit(
+                SecurityEvent(
+                    type: .appSentToBackground,
+                    feature: "app_state",
+                    message: "Aplicativo foi para background",
+                    source: "UIApplication.didEnterBackgroundNotification"
+                )
+            )
+        }
+
+        let willEnterForeground = center.addObserver(
+            forName: UIApplication.willEnterForegroundNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            SessionLogger.shared.i("APP_STATE", "willEnterForeground")
+        }
+
+        let capturedDidChange = center.addObserver(
+            forName: UIScreen.capturedDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            let isCaptured = UIScreen.main.isCaptured
+            SessionLogger.shared.w("EP_CAPTURE", "capturedDidChange isCaptured=\(isCaptured)")
+
+            if isCaptured {
+                SafeAppSecurityBus.shared.emit(
+                    SecurityEvent(
+                        type: .screenCaptureDetected,
+                        feature: "screen_capture",
+                        message: "Captura de tela/espelhamento detectado",
+                        source: "UIScreen.capturedDidChangeNotification",
+                        details: ["isCaptured": "true"]
+                    )
+                )
+            }
+        }
+
+        observers = [
+            didBecomeActive,
+            willResignActive,
+            didEnterBackground,
+            willEnterForeground,
+            capturedDidChange
+        ]
+
+        SessionLogger.shared.i("APP_STATE", "AppStateMonitor started")
+    }
+
+    public func stop() {
+        let center = NotificationCenter.default
+        observers.forEach(center.removeObserver)
+        observers.removeAll()
+        SessionLogger.shared.i("APP_STATE", "AppStateMonitor stopped")
+    }
+}

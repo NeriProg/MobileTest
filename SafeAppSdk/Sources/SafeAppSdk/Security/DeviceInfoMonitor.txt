@@ -1,0 +1,23 @@
+import Foundation
+import UIKit
+
+public final class DeviceInfoMonitor: @unchecked Sendable {
+    private let tag: String
+
+    public init(tag: String = "EP_DEVICE") {
+        self.tag = tag
+    }
+
+    public func logNow() {
+        let device = UIDevice.current
+
+        SessionLogger.shared.i(tag, "name=\(device.name)")
+        SessionLogger.shared.i(tag, "model=\(device.model)")
+        SessionLogger.shared.i(tag, "systemName=\(device.systemName)")
+        SessionLogger.shared.i(tag, "systemVersion=\(device.systemVersion)")
+        SessionLogger.shared.i(tag, "identifierForVendor=\(device.identifierForVendor?.uuidString ?? "nil")")
+        SessionLogger.shared.i(tag, "isBatteryMonitoringEnabled=\(device.isBatteryMonitoringEnabled)")
+        SessionLogger.shared.i(tag, "orientation=\(device.orientation.rawValue)")
+        SessionLogger.shared.i(tag, "localizedModel=\(device.localizedModel)")
+    }
+}
